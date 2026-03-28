@@ -22,8 +22,10 @@ function formatProbability(probability: number) {
 
 export function SimulationLab({
   selectedEventId,
+  onClose,
 }: {
   selectedEventId?: string | null
+  onClose?: () => void
 }) {
   const { theme } = useTheme()
   const rc = riskClasses[theme]
@@ -31,11 +33,11 @@ export function SimulationLab({
   const [activeBranchId, setActiveBranchId] = useState<string | null>(null)
   const [isExpanded, setIsExpanded] = useState(false)
   const [worldResult, setWorldResult] = useState<WorldSimulationStatusResponse | null>(null)
-  const [worldPrompt, setWorldPrompt] = useState<string | null>(null)
   const [worldOperationId, setWorldOperationId] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [worldError, setWorldError] = useState<string | null>(null)
   const [cachedWorld, setCachedWorld] = useState<CachedWorldSimulationResponse | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   useEffect(() => {
     const collectionsToWatch = [
@@ -142,8 +144,11 @@ export function SimulationLab({
     api.getCachedWorldSimulation(eventId, branchId)
       .then((data) => {
         if (cancelled) return
-        setCachedWorld(data)
-        if (data.done) {
+        const usable = Boolean(
+          data.done && (data.thumbnail_url || data.pano_url || (data.splat_urls && data.splat_urls.length > 0))
+        )
+        setCachedWorld(usable ? data : null)
+        if (usable) {
           setWorldResult({
             done: data.done,
             operation_id: data.operation_id,
@@ -151,10 +156,12 @@ export function SimulationLab({
             thumbnail_url: data.thumbnail_url,
             pano_url: data.pano_url,
             splat_urls: data.splat_urls,
+            world_marble_url: data.world_marble_url,
+            caption: data.caption,
             raw_operation: {},
           })
-          setWorldPrompt(data.prompt)
           setWorldOperationId(data.operation_id)
+          setWorldError(null)
         }
       })
       .catch(() => {
@@ -172,6 +179,12 @@ export function SimulationLab({
       setIsExpanded(true)
     }
   }, [selectedEventId])
+
+  useEffect(() => {
+    setWorldError(null)
+    setWorldResult(null)
+    setWorldOperationId(null)
+  }, [selectedEvent?.id, activeBranchId])
 
   useEffect(() => {
     if (!worldOperationId) return
@@ -203,6 +216,27 @@ export function SimulationLab({
   const activeBranch =
     simulation.branches.find((branch) => branch.id === activeBranchId) || simulation.branches[0]
 
+  const hasRenderableWorld = Boolean(
+    worldResult?.thumbnail_url ||
+    worldResult?.pano_url ||
+    (worldResult?.splat_urls && worldResult.splat_urls.length > 0)
+  )
+
+  const renderImageUrl = worldResult?.thumbnail_url || worldResult?.pano_url || null
+
+  const hasUsableCachedWorld = Boolean(
+    cachedWorld?.done &&
+    (cachedWorld.thumbnail_url || cachedWorld.pano_url || (cachedWorld.splat_urls && cachedWorld.splat_urls.length > 0))
+  )
+
+  const worldStateLabel = isGenerating
+    ? 'LIVE GENERATION'
+    : hasUsableCachedWorld
+      ? 'SAVED IN FIREBASE'
+      : worldOperationId
+        ? 'RUNNING'
+        : 'NOT GENERATED'
+
   async function handleGenerateWorld(rerun = false) {
     if (!selectedEvent) {
       setWorldError('Select a live event before generating a future world.')
@@ -211,6 +245,7 @@ export function SimulationLab({
 
     setWorldError(null)
     setWorldResult(null)
+    setCachedWorld(null)
     setIsGenerating(true)
 
     try {
@@ -219,19 +254,29 @@ export function SimulationLab({
         branch: activeBranch as unknown as Record<string, unknown>,
         rerun,
       })
-      setWorldPrompt(started.prompt)
       setWorldOperationId(started.operation_id)
       if (started.cached) {
         setIsGenerating(false)
-        setWorldResult({
-          done: true,
-          operation_id: started.operation_id,
-          world_id: started.world_id,
-          thumbnail_url: started.thumbnail_url,
-          pano_url: started.pano_url,
-          splat_urls: started.splat_urls,
-          raw_operation: {},
-        })
+        const usable = Boolean(
+          started.thumbnail_url ||
+          started.pano_url ||
+          (started.splat_urls && started.splat_urls.length > 0)
+        )
+        if (usable) {
+          setWorldResult({
+            done: true,
+            operation_id: started.operation_id,
+            world_id: started.world_id,
+            thumbnail_url: started.thumbnail_url,
+            pano_url: started.pano_url,
+            splat_urls: started.splat_urls,
+            world_marble_url: started.world_marble_url,
+            caption: started.caption,
+            raw_operation: {},
+          })
+        } else {
+          setWorldError('Saved simulation exists but has no renderable asset yet. Use RUN AGAIN.')
+        }
       }
     } catch (error) {
       setWorldError(error instanceof Error ? error.message : 'Failed to start world generation.')
@@ -240,14 +285,15 @@ export function SimulationLab({
   }
 
   return (
-    <motion.div
-      className={`absolute z-40 rounded-2xl overflow-hidden backdrop-blur-md border ${border[theme]} bg-white/85 dark:bg-neutral-900/55`}
-      style={{ bottom: '1rem', left: '1rem', right: isExpanded ? '20rem' : 'auto' }}
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: 'easeOut' }}
-    >
-      <div className={`px-4 py-3 ${isExpanded ? `border-b ${border[theme]}` : ''} flex items-start justify-between gap-4`}>
+    <>
+      <motion.div
+        className={`absolute z-40 rounded-2xl overflow-hidden backdrop-blur-md border ${border[theme]} bg-white/85 dark:bg-neutral-900/55`}
+        style={{ bottom: '1rem', left: '1rem', right: isExpanded ? '20rem' : 'auto' }}
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: 'easeOut' }}
+      >
+        <div className={`px-4 py-3 ${isExpanded ? `border-b ${border[theme]}` : ''} flex items-start justify-between gap-4`}>
         {!isExpanded ? (
           <>
             <div>
@@ -299,13 +345,22 @@ export function SimulationLab({
           >
             MINIMIZE
           </button>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className={`rounded-xl px-3 py-2 border ${border[theme]} ${textOpacity[theme].secondary} font-mono ${fontSize.small} tracking-[0.16em]`}
+            >
+              EXIT SCENARIO
+            </button>
+          )}
         </div>
         </>
         )}
-      </div>
+        </div>
 
-      {isExpanded && (
-      <div className="grid gap-4 p-4 lg:grid-cols-[1.15fr_1.85fr]">
+        {isExpanded && (
+        <div className="grid gap-4 p-4 lg:grid-cols-[0.9fr_2.1fr]">
         <div className="space-y-3">
           {simulation.branches.map((branch) => {
             const isActive = branch.id === activeBranch.id
@@ -394,7 +449,7 @@ export function SimulationLab({
                 disabled={isGenerating || !selectedEvent}
                 className={`rounded-xl px-4 py-2 border ${accent[theme].borderDim} ${accent[theme].bgDim} ${accent[theme].text} font-mono ${fontSize.small} tracking-[0.16em] disabled:opacity-50`}
               >
-                {isGenerating ? 'GENERATING FUTURE...' : cachedWorld?.done ? 'LOAD SAVED FUTURE' : 'GENERATE FUTURE VIEW'}
+                {isGenerating ? 'GENERATING FUTURE...' : hasUsableCachedWorld ? 'LOAD SAVED FUTURE' : 'GENERATE FUTURE VIEW'}
               </button>
               <button
                 type="button"
@@ -404,11 +459,9 @@ export function SimulationLab({
               >
                 RUN AGAIN
               </button>
-              {worldOperationId && (
-                <div className={`${fontSize.small} font-mono ${textOpacity[theme].faint}`}>
-                  Operation: {worldOperationId}
-                </div>
-              )}
+              <span className={`rounded-full px-2 py-1 font-mono ${fontSize.small} ${isGenerating ? rc.HIGH.text : hasUsableCachedWorld ? green[theme].text : textOpacity[theme].secondary} ${isGenerating ? rc.HIGH.bg : hasUsableCachedWorld ? green[theme].bgMuted : accent[theme].bgDim}`}>
+                {worldStateLabel}
+              </span>
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-4">
@@ -419,7 +472,75 @@ export function SimulationLab({
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
+          <div className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
+            <div className={`rounded-2xl border ${border[theme]} bg-black/[0.03] dark:bg-white/[0.03] p-4`}>
+              <div className="flex items-center justify-between gap-3">
+                <div className={`font-orbitron text-[11px] tracking-[0.28em] ${textOpacity[theme].faint}`}>
+                  SIMULATED FUTURE
+                </div>
+                <div className={`${fontSize.small} font-mono ${textOpacity[theme].faint}`}>
+                  {hasUsableCachedWorld ? 'INSTANT REPLAY READY' : isGenerating ? 'LIVE WORLD GENERATION' : 'READY TO GENERATE'}
+                </div>
+              </div>
+              <div className="mt-3">
+                {renderImageUrl ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsFullscreen(true)}
+                    className="block w-full"
+                  >
+                    <img
+                      src={renderImageUrl}
+                      alt={`${activeBranch.label} simulation`}
+                      className="h-[340px] w-full rounded-xl border border-black/10 object-cover dark:border-white/10"
+                    />
+                  </button>
+                ) : (
+                  <div className={`flex h-[340px] w-full items-center justify-center rounded-xl border border-dashed border-black/15 dark:border-white/15 ${accent[theme].bgDim} px-6 text-center`}>
+                    <div>
+                      <div className={`${fontSize.medium} font-semibold ${textOpacity[theme].primary}`}>
+                        {isGenerating ? 'Generating orbital future...' : 'No simulation loaded yet'}
+                      </div>
+                      <div className={`mt-2 ${fontSize.base} ${textOpacity[theme].secondary}`}>
+                        {worldError || (selectedEvent
+                          ? 'Run this branch once and the generated world will be cached for instant demo playback.'
+                          : 'Select the critical satellite event, then generate a future branch.')}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {renderImageUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setIsFullscreen(true)}
+                      className={`rounded-xl px-3 py-2 border ${accent[theme].borderDim} ${accent[theme].bgDim} ${accent[theme].text} font-mono ${fontSize.small} tracking-[0.16em]`}
+                    >
+                      OPEN FULL SCREEN
+                    </button>
+                  )}
+                  {worldResult?.world_marble_url && (
+                    <a
+                      href={worldResult.world_marble_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={`rounded-xl px-3 py-2 border ${border[theme]} ${textOpacity[theme].secondary} font-mono ${fontSize.small} tracking-[0.16em]`}
+                    >
+                      OPEN IN MARBLE 3D
+                    </a>
+                  )}
+                </div>
+                {(renderImageUrl || isGenerating || worldResult?.caption) && (
+                  <div className={`mt-3 ${fontSize.base} ${textOpacity[theme].secondary}`}>
+                    {worldResult?.caption ||
+                      (renderImageUrl
+                        ? `${activeBranch.label} visualized as the predicted future state. ${hasUsableCachedWorld ? 'Loaded instantly from Firebase cache.' : 'Freshly generated from World Labs.'}`
+                        : 'World Labs is still generating this branch. First run can take under a minute.')}
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className={`rounded-2xl border ${border[theme]} bg-black/[0.03] dark:bg-white/[0.03] p-4`}>
               <div className={`font-orbitron text-[11px] tracking-[0.28em] ${textOpacity[theme].faint}`}>
                 FUTURE TIMELINE
@@ -433,42 +554,75 @@ export function SimulationLab({
                 ))}
               </div>
             </div>
-
-            <div className={`rounded-2xl border ${border[theme]} bg-black/[0.03] dark:bg-white/[0.03] p-4`}>
-              <div className={`font-orbitron text-[11px] tracking-[0.28em] ${textOpacity[theme].faint}`}>
-                WORLD MODEL OUTPUT
-              </div>
-              {worldResult?.thumbnail_url ? (
-                <div className="mt-3">
-                  <img
-                    src={worldResult.thumbnail_url}
-                    alt="Generated future world"
-                    className="w-full rounded-xl border border-black/10 dark:border-white/10"
-                  />
-                  <div className={`mt-3 ${fontSize.small} ${textOpacity[theme].secondary}`}>
-                    {worldResult.pano_url ? 'Panorama asset returned and ready for richer rendering.' : 'Thumbnail returned from World Labs.'}
-                    {cachedWorld?.done ? ' Cached in Firebase for instant demo reloads.' : ''}
-                  </div>
-                </div>
-              ) : (
-                <p className={`mt-3 ${fontSize.base} ${textOpacity[theme].secondary}`}>
-                  {worldError || simulation.confidenceNote}
-                </p>
-              )}
-              {worldPrompt && (
-                <div className={`mt-4 rounded-xl border ${accent[theme].borderDim} ${accent[theme].bgDim} px-3 py-2`}>
-                  <div className={`font-mono ${fontSize.small} ${textOpacity[theme].faint}`}>WORLD PROMPT</div>
-                  <div className={`mt-1 ${fontSize.base} ${textOpacity[theme].primary}`}>
-                    {worldPrompt}
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
         </div>
-      </div>
+        </div>
+        )}
+      </motion.div>
+
+      {isFullscreen && renderImageUrl && (
+        <div className="fixed inset-0 z-[90] bg-black">
+          <img
+            src={renderImageUrl}
+            alt={`${activeBranch.label} fullscreen simulation`}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/25 to-black/80" />
+
+          <div className="absolute left-0 right-0 top-0 flex items-center justify-between px-6 py-5">
+            <div>
+              <div className={`font-orbitron text-[11px] tracking-[0.28em] ${accent[theme].text}`}>
+                FULL-SCREEN SIMULATION
+              </div>
+              <div className={`mt-2 ${fontSize.xlarge} font-semibold text-white`}>
+                {selectedEvent?.asset_name || selectedEvent?.name || 'Satellite Risk Event'}
+              </div>
+              <div className={`mt-1 ${fontSize.medium} text-white/75`}>
+                {activeBranch.label} branch · {simulation.horizonLabel}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {worldResult?.world_marble_url && (
+                <a
+                  href={worldResult.world_marble_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-xl border border-white/20 bg-white/10 px-4 py-2 font-mono text-[11px] tracking-[0.16em] text-white backdrop-blur"
+                >
+                  OPEN IN MARBLE 3D
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsFullscreen(false)}
+                className="rounded-xl border border-white/20 bg-white/10 px-4 py-2 font-mono text-[11px] tracking-[0.16em] text-white backdrop-blur"
+              >
+                CLOSE
+              </button>
+            </div>
+          </div>
+
+          <div className="absolute left-6 top-28 max-w-md rounded-2xl border border-white/10 bg-black/35 p-5 backdrop-blur-md">
+            <div className="font-orbitron text-[11px] tracking-[0.28em] text-white/55">
+              RECOMMENDED ACTION
+            </div>
+            <div className="mt-2 text-3xl font-semibold text-white">
+              {activeBranch.label}
+            </div>
+            <p className="mt-3 text-sm leading-6 text-white/78">
+              {worldResult?.caption || activeBranch.recommendation}
+            </p>
+          </div>
+
+          <div className="absolute bottom-6 left-6 right-6 grid gap-3 md:grid-cols-4">
+            <FullscreenMetric label="Miss Distance" value={`${activeBranch.metrics.missDistanceKm} km`} />
+            <FullscreenMetric label="Collision Risk" value={formatProbability(activeBranch.metrics.collisionProbability)} />
+            <FullscreenMetric label="Fuel Cost" value={`${activeBranch.metrics.fuelCostKg} kg`} />
+            <FullscreenMetric label="Mission Delay" value={`${activeBranch.metrics.scheduleDelayMin} min`} />
+          </div>
+        </div>
       )}
-    </motion.div>
+    </>
   )
 }
 
@@ -487,6 +641,21 @@ function MetricCard({
     <div className="rounded-xl border border-black/10 dark:border-white/10 px-3 py-2">
       <div className={`font-mono ${faint} text-[11px] tracking-[0.14em]`}>{label}</div>
       <div className={`mt-1 text-sm font-semibold ${tone}`}>{value}</div>
+    </div>
+  )
+}
+
+function FullscreenMetric({
+  label,
+  value,
+}: {
+  label: string
+  value: string
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/35 p-4 backdrop-blur-md">
+      <div className="font-mono text-[11px] tracking-[0.18em] text-white/45">{label}</div>
+      <div className="mt-2 text-2xl font-semibold text-white">{value}</div>
     </div>
   )
 }

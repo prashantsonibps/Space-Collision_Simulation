@@ -77,6 +77,7 @@ function EventRow({
   userId,
   isSelected,
   onSelect,
+  onRunScenario,
 }: {
   event: ConjunctionEvent
   index: number
@@ -84,6 +85,7 @@ function EventRow({
   userId: string
   isSelected: boolean
   onSelect: (id: string | null) => void
+  onRunScenario: (id: string) => void
 }) {
   const { theme } = useTheme()
   const rc = riskClasses[theme]
@@ -211,9 +213,13 @@ function EventRow({
               </div>
 
               <div className="flex gap-2 mt-2">
-                <div className={`flex-1 py-1.5 rounded ${fontSize.small} font-mono border ${accent[theme].borderDim} ${accent[theme].bgDim} ${accent[theme].text} text-center tracking-[0.16em]`}>
+                <button
+                  type="button"
+                  onClick={() => onRunScenario(event.id)}
+                  className={`flex-1 py-1.5 rounded ${fontSize.small} font-mono border ${accent[theme].borderDim} ${accent[theme].bgDim} ${accent[theme].text} text-center tracking-[0.16em]`}
+                >
                   RUN SCENARIO
-                </div>
+                </button>
               </div>
             </motion.div>
           )}
@@ -227,12 +233,14 @@ export function EventsPanel({
   userId,
   selectedEventId,
   onSelectEvent,
+  onRunScenario,
   activeTab,
   isOpen,
 }: {
   userId?: string
   selectedEventId: string | null
   onSelectEvent: (id: string | null) => void
+  onRunScenario: (id: string) => void
   activeTab: 'TRENDING' | 'SAT' | 'NEO' | 'WEATHER' | 'INDEX' | 'FIREBALL' | 'LAUNCH'
   isOpen: boolean
 }) {
@@ -458,6 +466,7 @@ export function EventsPanel({
                     userId={userId}
                     isSelected={selectedEventId === event.id}
                     onSelect={onSelectEvent}
+                    onRunScenario={onRunScenario}
                   />
                 ))
               )}
