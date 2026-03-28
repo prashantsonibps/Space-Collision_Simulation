@@ -64,6 +64,8 @@ export interface WorldSimulationStartResponse {
   thumbnail_url?: string;
   pano_url?: string;
   splat_urls?: string[];
+  world_marble_url?: string;
+  caption?: string;
 }
 
 export interface WorldSimulationStatusResponse {
@@ -73,6 +75,8 @@ export interface WorldSimulationStatusResponse {
   thumbnail_url?: string;
   pano_url?: string;
   splat_urls?: string[];
+  world_marble_url?: string;
+  caption?: string;
   raw_operation: Record<string, unknown>;
 }
 
@@ -87,6 +91,8 @@ export interface CachedWorldSimulationResponse {
   thumbnail_url?: string;
   pano_url?: string;
   splat_urls?: string[];
+  world_marble_url?: string;
+  caption?: string;
   updated_at: string;
 }
 

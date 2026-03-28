@@ -64,6 +64,10 @@ export function SatelliteMarkers({
 
   const satRefs = useRef<(THREE.Mesh | null)[]>([])
   const startTime = useRef(Date.now())
+  const selectedEvent = useMemo(
+    () => events.find((event) => event.id === selectedEventId) || null,
+    [events, selectedEventId]
+  )
 
   useFrame(() => {
     const elapsed = (Date.now() - startTime.current) / 1000
@@ -129,6 +133,86 @@ export function SatelliteMarkers({
           onSelectEvent={onSelectEvent}
         />
       ))}
+
+      {selectedEvent && (
+        <SelectedConjunctionViz
+          event={selectedEvent}
+          color={probToColor(selectedEvent.collision_probability ?? 0)}
+        />
+      )}
+    </group>
+  )
+}
+
+function SelectedConjunctionViz({
+  event,
+  color,
+}: {
+  event: ConjunctionEvent
+  color: string
+}) {
+  const lineRef = useRef<any>(null)
+  const approachRef = useRef<THREE.Mesh | null>(null)
+  const startTime = useRef(Date.now())
+
+  const seed = useMemo(() => {
+    const raw = `${event.asset_id}:${event.secondary_id}`
+    return raw.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+  }, [event.asset_id, event.secondary_id])
+
+  useFrame(() => {
+    const elapsed = (Date.now() - startTime.current) / 1000
+    const altA = 480 + (seed % 9) * 12
+    const altB = altA + 14
+    const inclinationA = 36 + (seed % 5) * 9
+    const inclinationB = inclinationA + 6
+    const raanA = (seed * 13) % 360
+    const raanB = (seed * 17 + 18) % 360
+
+    const posA = positionOnSphere(altA, inclinationA, raanA, elapsed * 0.65, 0, VIZ_SCALE)
+    const posB = positionOnSphere(altB, inclinationB, raanB, elapsed * 0.65, Math.PI / 18, VIZ_SCALE)
+
+    if (lineRef.current) {
+      const geometry = lineRef.current.geometry as THREE.BufferGeometry
+      const positionAttribute = geometry.getAttribute('position')
+      positionAttribute.setXYZ(0, posA[0], posA[1], posA[2])
+      positionAttribute.setXYZ(1, posB[0], posB[1], posB[2])
+      positionAttribute.needsUpdate = true
+    }
+
+    if (approachRef.current) {
+      approachRef.current.position.set(
+        (posA[0] + posB[0]) / 2,
+        (posA[1] + posB[1]) / 2,
+        (posA[2] + posB[2]) / 2,
+      )
+      const pulse = 1 + Math.sin(elapsed * 4) * 0.18
+      approachRef.current.scale.setScalar(pulse)
+    }
+  })
+
+  return (
+    <group>
+      <Line
+        ref={lineRef}
+        points={[[0, 0, 0], [0.1, 0.1, 0.1]]}
+        color={color}
+        transparent
+        opacity={0.9}
+        lineWidth={2.5}
+        dashed
+        dashSize={0.03}
+        gapSize={0.015}
+      />
+      <Sphere ref={approachRef} args={[DOT_SIZE * 6, 18, 18]}>
+        <meshStandardMaterial
+          color={color}
+          emissive={color}
+          emissiveIntensity={4}
+          transparent
+          opacity={0.95}
+        />
+      </Sphere>
     </group>
   )
 }

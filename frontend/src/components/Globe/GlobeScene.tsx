@@ -62,10 +62,12 @@ function SceneContent({
   selectedEventId,
   onSelectEvent,
   theme,
+  performanceMode,
 }: {
   selectedEventId?: string | null
   onSelectEvent?: (id: string | null) => void
   theme: 'dark' | 'light'
+  performanceMode?: boolean
 }) {
   const canvas = globeColors[theme].canvas
   return (
@@ -78,7 +80,7 @@ function SceneContent({
       <directionalLight position={[5, 3, 5]} intensity={1.4} color="#ffffff" />
 
       {/* Star field — anchored to camera, no depth spread */}
-      <SkyStars theme={theme} />
+      {!performanceMode && <SkyStars theme={theme} />}
 
       {/* Earth + satellites */}
       <Suspense fallback={null}>
@@ -88,21 +90,22 @@ function SceneContent({
 
       {/* Camera controls — damping disabled for instant response */}
       <OrbitControls
-        enableZoom
+        enableZoom={!performanceMode}
         enablePan={false}
         enableDamping={false}
         minDistance={1.5}
         maxDistance={6}
       />
 
-      {/* Subtle bloom — makes white dots glow slightly */}
-      <EffectComposer>
-        <Bloom
-          intensity={0.35}
-          luminanceThreshold={0.6}
-          luminanceSmoothing={0.9}
-        />
-      </EffectComposer>
+      {!performanceMode && (
+        <EffectComposer>
+          <Bloom
+            intensity={0.35}
+            luminanceThreshold={0.6}
+            luminanceSmoothing={0.9}
+          />
+        </EffectComposer>
+      )}
     </>
   )
 }
@@ -110,9 +113,11 @@ function SceneContent({
 export function GlobeScene({
   selectedEventId,
   onSelectEvent,
+  performanceMode,
 }: {
   selectedEventId?: string | null
   onSelectEvent?: (id: string | null) => void
+  performanceMode?: boolean
 }) {
   const { theme } = useTheme()
   const [visible, setVisible] = useState(false)
@@ -129,10 +134,16 @@ export function GlobeScene({
       <Canvas
         camera={{ position: [3.2, 2.0, 0.4], fov: 50 }}
         style={{ background: globeColors[theme].canvas }}
-        gl={{ antialias: true, alpha: false }}
+        dpr={performanceMode ? [1, 1] : [1, 1.5]}
+        gl={{ antialias: !performanceMode, alpha: false }}
         onCreated={() => setVisible(true)}
       >
-        <SceneContent selectedEventId={selectedEventId} onSelectEvent={onSelectEvent} theme={theme} />
+        <SceneContent
+          selectedEventId={selectedEventId}
+          onSelectEvent={onSelectEvent}
+          theme={theme}
+          performanceMode={performanceMode}
+        />
       </Canvas>
     </div>
   )

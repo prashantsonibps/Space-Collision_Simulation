@@ -109,6 +109,8 @@ class WorldSimulationStartResponse(BaseModel):
     thumbnail_url: Optional[str] = None
     pano_url: Optional[str] = None
     splat_urls: Optional[List[str]] = None
+    world_marble_url: Optional[str] = None
+    caption: Optional[str] = None
 
 class WorldSimulationStatusResponse(BaseModel):
     done: bool
@@ -117,6 +119,8 @@ class WorldSimulationStatusResponse(BaseModel):
     thumbnail_url: Optional[str] = None
     pano_url: Optional[str] = None
     splat_urls: Optional[List[str]] = None
+    world_marble_url: Optional[str] = None
+    caption: Optional[str] = None
     raw_operation: dict
 
 
@@ -140,6 +144,8 @@ def _simulation_payload(
     thumbnail_url: Optional[str] = None,
     pano_url: Optional[str] = None,
     splat_urls: Optional[List[str]] = None,
+    world_marble_url: Optional[str] = None,
+    caption: Optional[str] = None,
 ) -> dict:
     return {
         "event_id": event_id,
@@ -152,6 +158,8 @@ def _simulation_payload(
         "thumbnail_url": thumbnail_url,
         "pano_url": pano_url,
         "splat_urls": splat_urls or [],
+        "world_marble_url": world_marble_url,
+        "caption": caption,
         "updated_at": datetime.utcnow().isoformat() + "Z",
     }
 
@@ -167,6 +175,14 @@ def _save_cached_simulation(data: dict) -> None:
     event_id = str(data["event_id"])
     branch_id = str(data["branch_id"])
     db.collection("world_simulations").document(_simulation_doc_id(event_id, branch_id)).set(data, merge=True)
+
+
+def _normalize_splat_urls(value) -> list[str]:
+    if isinstance(value, dict):
+        return [url for url in value.values() if isinstance(url, str)]
+    if isinstance(value, list):
+        return [url for url in value if isinstance(url, str)]
+    return []
 
 @app.get("/")
 def read_root():
@@ -186,7 +202,9 @@ def start_world_simulation(req: WorldSimulationRequest):
             "world_id": cached.get("world_id"),
             "thumbnail_url": cached.get("thumbnail_url"),
             "pano_url": cached.get("pano_url"),
-            "splat_urls": cached.get("splat_urls"),
+            "splat_urls": _normalize_splat_urls(cached.get("splat_urls")),
+            "world_marble_url": cached.get("world_marble_url"),
+            "caption": cached.get("caption"),
         }
 
     branch_label = req.branch.get("label", "Scenario Branch")
@@ -265,14 +283,19 @@ def get_world_simulation_status(operation_id: str):
     assets = world.get("assets") or {}
     imagery = assets.get("imagery") or {}
     splats = assets.get("splats") or {}
+    thumbnail_url = world.get("thumbnail_url") or assets.get("thumbnail_url")
+    world_marble_url = world.get("world_marble_url")
+    caption = assets.get("caption")
 
     payload = {
         "done": True,
         "operation_id": operation_id,
         "world_id": world_id,
-        "thumbnail_url": world.get("thumbnail_url"),
+        "thumbnail_url": thumbnail_url,
         "pano_url": imagery.get("pano_url"),
-        "splat_urls": splats.get("spz_urls"),
+        "splat_urls": _normalize_splat_urls(splats.get("spz_urls")),
+        "world_marble_url": world_marble_url,
+        "caption": caption,
         "raw_operation": operation,
     }
 
@@ -289,9 +312,11 @@ def get_world_simulation_status(operation_id: str):
                 operation_id=operation_id,
                 done=True,
                 world_id=world_id,
-                thumbnail_url=world.get("thumbnail_url"),
+                thumbnail_url=thumbnail_url,
                 pano_url=imagery.get("pano_url"),
-                splat_urls=splats.get("spz_urls"),
+                splat_urls=_normalize_splat_urls(splats.get("spz_urls")),
+                world_marble_url=world_marble_url,
+                caption=caption,
             )
         )
 

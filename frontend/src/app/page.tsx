@@ -18,6 +18,7 @@ const GlobeScene = dynamic(
 export default function HomePage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
+  const [scenarioEventId, setScenarioEventId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<TabType>('TRENDING')
   const [isRiskOpen, setIsRiskOpen] = useState(false)
   const [isDesktop, setIsDesktop] = useState(false)
@@ -57,7 +58,11 @@ export default function HomePage() {
     <div className="relative w-screen h-screen overflow-hidden bg-slate-50 dark:bg-black">
       {/* Full-screen globe */}
       <div className="absolute inset-0">
-        <GlobeScene selectedEventId={selectedEventId} onSelectEvent={setSelectedEventId} />
+        <GlobeScene
+          selectedEventId={selectedEventId}
+          onSelectEvent={setSelectedEventId}
+          performanceMode={Boolean(scenarioEventId)}
+        />
       </div>
 
       {/* Overlay UI */}
@@ -68,6 +73,10 @@ export default function HomePage() {
           userId={userId}
           selectedEventId={selectedEventId}
           onSelectEvent={setSelectedEventId}
+          onRunScenario={(id) => {
+            setSelectedEventId(id)
+            setScenarioEventId(id)
+          }}
           activeTab={activeTab}
           isOpen={isDesktop ? true : isRiskOpen}
         />
@@ -82,7 +91,12 @@ export default function HomePage() {
           {isRiskOpen ? 'CLOSE' : 'RISK'}
         </span>
       </button>
-      <SimulationLab selectedEventId={selectedEventId} />
+      {scenarioEventId && (
+        <SimulationLab
+          selectedEventId={scenarioEventId}
+          onClose={() => setScenarioEventId(null)}
+        />
+      )}
     </div>
   )
 }
