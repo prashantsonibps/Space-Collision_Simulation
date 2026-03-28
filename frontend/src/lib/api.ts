@@ -60,6 +60,11 @@ export interface WorldSimulationStartResponse {
   prompt: string;
   display_name: string;
   cached: boolean;
+  created_at?: string;
+  updated_at?: string;
+  expires_at?: string;
+  progress_status?: string;
+  progress_description?: string;
   world_id?: string;
   thumbnail_url?: string;
   pano_url?: string;
@@ -71,6 +76,11 @@ export interface WorldSimulationStartResponse {
 export interface WorldSimulationStatusResponse {
   done: boolean;
   operation_id: string;
+  created_at?: string;
+  updated_at?: string;
+  expires_at?: string;
+  progress_status?: string;
+  progress_description?: string;
   world_id?: string;
   thumbnail_url?: string;
   pano_url?: string;
@@ -87,13 +97,17 @@ export interface CachedWorldSimulationResponse {
   prompt: string;
   operation_id: string;
   done: boolean;
+  created_at?: string;
+  updated_at?: string;
+  expires_at?: string;
+  progress_status?: string;
+  progress_description?: string;
   world_id?: string;
   thumbnail_url?: string;
   pano_url?: string;
   splat_urls?: string[];
   world_marble_url?: string;
   caption?: string;
-  updated_at: string;
 }
 
 export const api = {

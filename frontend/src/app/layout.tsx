@@ -5,7 +5,7 @@ import { ThemeProvider } from '@/lib/ThemeContext'
 export const metadata: Metadata = {
   title: 'SpaceGuard — Satellite Collision Risk Intelligence',
   description:
-    'Real-time satellite conjunction detection and financial risk hedging dashboard',
+    'Globe-first satellite collision simulation and scenario planning console',
 }
 
 export default function RootLayout({
@@ -15,7 +15,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body style={{ overflow: 'hidden', margin: 0 }}>
+      <body style={{ overflowX: 'hidden', margin: 0 }}>
         <ThemeProvider>
           {children}
         </ThemeProvider>

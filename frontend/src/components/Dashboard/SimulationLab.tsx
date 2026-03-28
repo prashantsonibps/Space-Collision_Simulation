@@ -1,5 +1,6 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { collection, onSnapshot, query } from 'firebase/firestore'
@@ -10,6 +11,11 @@ import { accent, border, fontSize, green, riskClasses, textOpacity } from '@/lib
 import { useTheme } from '@/lib/ThemeContext'
 import { api, type CachedWorldSimulationResponse, type WorldSimulationStatusResponse } from '@/lib/api'
 
+const ImmersiveWorldViewer = dynamic(
+  () => import('@/components/Dashboard/ImmersiveWorldViewer').then((mod) => mod.ImmersiveWorldViewer),
+  { ssr: false },
+)
+
 const branchTone = {
   monitor: 'Monitor',
   maneuver: 'Intervene',
@@ -18,6 +24,31 @@ const branchTone = {
 
 function formatProbability(probability: number) {
   return `${(probability * 100).toFixed(probability < 0.01 ? 2 : 1)}%`
+}
+
+function compactCaption(input?: string | null) {
+  if (!input) return null
+  const trimmed = input.replace(/\s+/g, ' ').trim()
+  if (trimmed.length <= 180) return trimmed
+  return `${trimmed.slice(0, 177)}...`
+}
+
+function formatRuntimeLabel(isoString?: string) {
+  if (!isoString) return null
+  const parsed = new Date(isoString)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+function formatElapsed(startIso?: string, endIso?: string) {
+  if (!startIso) return null
+  const start = new Date(startIso).getTime()
+  const end = endIso ? new Date(endIso).getTime() : Date.now()
+  if (Number.isNaN(start) || Number.isNaN(end)) return null
+  const totalSeconds = Math.max(0, Math.floor((end - start) / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}m ${seconds.toString().padStart(2, '0')}s`
 }
 
 export function SimulationLab({
@@ -38,6 +69,7 @@ export function SimulationLab({
   const [worldError, setWorldError] = useState<string | null>(null)
   const [cachedWorld, setCachedWorld] = useState<CachedWorldSimulationResponse | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isImmersive3D, setIsImmersive3D] = useState(false)
 
   useEffect(() => {
     const collectionsToWatch = [
@@ -152,6 +184,11 @@ export function SimulationLab({
           setWorldResult({
             done: data.done,
             operation_id: data.operation_id,
+            created_at: data.created_at,
+            updated_at: data.updated_at,
+            expires_at: data.expires_at,
+            progress_status: data.progress_status,
+            progress_description: data.progress_description,
             world_id: data.world_id,
             thumbnail_url: data.thumbnail_url,
             pano_url: data.pano_url,
@@ -194,8 +231,8 @@ export function SimulationLab({
       try {
         const status = await api.getWorldSimulationStatus(worldOperationId)
         if (cancelled) return
+        setWorldResult(status)
         if (status.done) {
-          setWorldResult(status)
           setIsGenerating(false)
           window.clearInterval(intervalId)
         }
@@ -215,6 +252,15 @@ export function SimulationLab({
 
   const activeBranch =
     simulation.branches.find((branch) => branch.id === activeBranchId) || simulation.branches[0]
+  const shortCaption = compactCaption(worldResult?.caption)
+  const generationStartedAt = worldResult?.created_at || undefined
+  const generationUpdatedAt = worldResult?.updated_at || undefined
+  const generationStartedLabel = formatRuntimeLabel(generationStartedAt)
+  const generationElapsed = formatElapsed(generationStartedAt, worldResult?.done ? generationUpdatedAt : undefined)
+  const generationStatusLabel = worldResult?.progress_status || (isGenerating ? 'IN_PROGRESS' : undefined)
+  const generationDescription =
+    worldResult?.progress_description ||
+    (isGenerating ? 'World generation in progress' : undefined)
 
   const hasRenderableWorld = Boolean(
     worldResult?.thumbnail_url ||
@@ -223,6 +269,7 @@ export function SimulationLab({
   )
 
   const renderImageUrl = worldResult?.thumbnail_url || worldResult?.pano_url || null
+  const immersivePanoUrl = worldResult?.pano_url || null
 
   const hasUsableCachedWorld = Boolean(
     cachedWorld?.done &&
@@ -255,6 +302,16 @@ export function SimulationLab({
         rerun,
       })
       setWorldOperationId(started.operation_id)
+      setWorldResult({
+        done: false,
+        operation_id: started.operation_id,
+        created_at: started.created_at,
+        updated_at: started.updated_at,
+        expires_at: started.expires_at,
+        progress_status: started.progress_status,
+        progress_description: started.progress_description,
+        raw_operation: {},
+      })
       if (started.cached) {
         setIsGenerating(false)
         const usable = Boolean(
@@ -266,6 +323,11 @@ export function SimulationLab({
           setWorldResult({
             done: true,
             operation_id: started.operation_id,
+            created_at: started.created_at,
+            updated_at: started.updated_at,
+            expires_at: started.expires_at,
+            progress_status: started.progress_status,
+            progress_description: started.progress_description,
             world_id: started.world_id,
             thumbnail_url: started.thumbnail_url,
             pano_url: started.pano_url,
@@ -275,7 +337,16 @@ export function SimulationLab({
             raw_operation: {},
           })
         } else {
-          setWorldError('Saved simulation exists but has no renderable asset yet. Use RUN AGAIN.')
+          setWorldResult({
+            done: false,
+            operation_id: started.operation_id,
+            created_at: started.created_at,
+            updated_at: started.updated_at,
+            expires_at: started.expires_at,
+            progress_status: started.progress_status,
+            progress_description: started.progress_description,
+            raw_operation: {},
+          })
         }
       }
     } catch (error) {
@@ -287,8 +358,8 @@ export function SimulationLab({
   return (
     <>
       <motion.div
-        className={`absolute z-40 rounded-2xl overflow-hidden backdrop-blur-md border ${border[theme]} bg-white/85 dark:bg-neutral-900/55`}
-        style={{ bottom: '1rem', left: '1rem', right: isExpanded ? '20rem' : 'auto' }}
+        className={`absolute z-40 flex flex-col rounded-2xl overflow-hidden backdrop-blur-md border ${border[theme]} bg-white/85 dark:bg-neutral-900/55`}
+        style={{ bottom: '1rem', left: '1rem', right: isExpanded ? '20rem' : 'auto', maxHeight: 'calc(100vh - 2rem)' }}
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, ease: 'easeOut' }}
@@ -360,7 +431,7 @@ export function SimulationLab({
         </div>
 
         {isExpanded && (
-        <div className="grid gap-4 p-4 lg:grid-cols-[0.9fr_2.1fr]">
+        <div className="grid flex-1 gap-4 overflow-y-auto p-4 lg:grid-cols-[0.9fr_2.1fr]">
         <div className="space-y-3">
           {simulation.branches.map((branch) => {
             const isActive = branch.id === activeBranch.id
@@ -464,6 +535,37 @@ export function SimulationLab({
               </span>
             </div>
 
+            {(isGenerating || generationStartedAt) && (
+              <div className={`mt-3 rounded-xl border ${accent[theme].borderDim} ${accent[theme].bgDim} px-3 py-2`}>
+                <div className={`font-mono ${fontSize.small} tracking-[0.16em] ${textOpacity[theme].faint}`}>
+                  WORLD LABS TIMELINE
+                </div>
+                <div className="mt-2 grid gap-2 md:grid-cols-4">
+                  <div>
+                    <div className={`font-mono ${fontSize.small} ${textOpacity[theme].faint}`}>STATUS</div>
+                    <div className={`${fontSize.base} ${textOpacity[theme].primary}`}>{generationStatusLabel || 'QUEUED'}</div>
+                  </div>
+                  <div>
+                    <div className={`font-mono ${fontSize.small} ${textOpacity[theme].faint}`}>STARTED</div>
+                    <div className={`${fontSize.base} ${textOpacity[theme].primary}`}>{generationStartedLabel || '--'}</div>
+                  </div>
+                  <div>
+                    <div className={`font-mono ${fontSize.small} ${textOpacity[theme].faint}`}>ELAPSED</div>
+                    <div className={`${fontSize.base} ${textOpacity[theme].primary}`}>{generationElapsed || '--'}</div>
+                  </div>
+                  <div>
+                    <div className={`font-mono ${fontSize.small} ${textOpacity[theme].faint}`}>EXPECTED</div>
+                    <div className={`${fontSize.base} ${textOpacity[theme].primary}`}>about 5 min</div>
+                  </div>
+                </div>
+                {generationDescription && (
+                  <div className={`mt-2 ${fontSize.base} ${textOpacity[theme].secondary}`}>
+                    {generationDescription}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="mt-4 grid gap-3 md:grid-cols-4">
               <MetricCard label="Miss Distance" value={`${activeBranch.metrics.missDistanceKm} km`} tone={textOpacity[theme].primary} faint={textOpacity[theme].faint} />
               <MetricCard label="Collision Risk" value={formatProbability(activeBranch.metrics.collisionProbability)} tone={(activeBranch.metrics.collisionProbability < 0.01 ? green[theme].text : rc.HIGH.text)} faint={textOpacity[theme].faint} />
@@ -519,15 +621,17 @@ export function SimulationLab({
                       OPEN FULL SCREEN
                     </button>
                   )}
-                  {worldResult?.world_marble_url && (
-                    <a
-                      href={worldResult.world_marble_url}
-                      target="_blank"
-                      rel="noreferrer"
+                  {immersivePanoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsFullscreen(true)
+                        setIsImmersive3D(true)
+                      }}
                       className={`rounded-xl px-3 py-2 border ${border[theme]} ${textOpacity[theme].secondary} font-mono ${fontSize.small} tracking-[0.16em]`}
                     >
-                      OPEN IN MARBLE 3D
-                    </a>
+                      ENTER 3D VIEW
+                    </button>
                   )}
                 </div>
                 {(renderImageUrl || isGenerating || worldResult?.caption) && (
@@ -561,65 +665,112 @@ export function SimulationLab({
       </motion.div>
 
       {isFullscreen && renderImageUrl && (
-        <div className="fixed inset-0 z-[90] bg-black">
-          <img
-            src={renderImageUrl}
-            alt={`${activeBranch.label} fullscreen simulation`}
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/25 to-black/80" />
-
-          <div className="absolute left-0 right-0 top-0 flex items-center justify-between px-6 py-5">
-            <div>
-              <div className={`font-orbitron text-[11px] tracking-[0.28em] ${accent[theme].text}`}>
-                FULL-SCREEN SIMULATION
-              </div>
-              <div className={`mt-2 ${fontSize.xlarge} font-semibold text-white`}>
-                {selectedEvent?.asset_name || selectedEvent?.name || 'Satellite Risk Event'}
-              </div>
-              <div className={`mt-1 ${fontSize.medium} text-white/75`}>
-                {activeBranch.label} branch · {simulation.horizonLabel}
-              </div>
+        <div className="fixed inset-0 z-[90] overflow-y-auto bg-black">
+          {isImmersive3D && immersivePanoUrl ? (
+            <div className="absolute inset-0">
+              <ImmersiveWorldViewer panoUrl={immersivePanoUrl} />
             </div>
-            <div className="flex items-center gap-2">
-              {worldResult?.world_marble_url && (
-                <a
-                  href={worldResult.world_marble_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-xl border border-white/20 bg-white/10 px-4 py-2 font-mono text-[11px] tracking-[0.16em] text-white backdrop-blur"
-                >
-                  OPEN IN MARBLE 3D
-                </a>
-              )}
+          ) : (
+            <>
+              <img
+                src={renderImageUrl}
+                alt={`${activeBranch.label} fullscreen simulation`}
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(125,211,252,0.18),transparent_28%),linear-gradient(180deg,rgba(2,6,23,0.72)_0%,rgba(2,6,23,0.38)_24%,rgba(2,6,23,0.72)_100%)]" />
+              <div className="absolute inset-y-0 left-0 w-[42rem] bg-gradient-to-r from-slate-950/88 via-slate-950/70 to-transparent" />
+            </>
+          )}
+
+          {isImmersive3D ? (
+            <div className="absolute right-5 top-5 z-[95] flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setIsFullscreen(false)}
-                className="rounded-xl border border-white/20 bg-white/10 px-4 py-2 font-mono text-[11px] tracking-[0.16em] text-white backdrop-blur"
+                onClick={() => setIsImmersive3D(false)}
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-sky-200/35 bg-slate-950/48 text-sky-50 shadow-[0_12px_30px_rgba(2,6,23,0.35)] backdrop-blur-md"
+                aria-label="Exit 3D view"
               >
-                CLOSE
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 18 9 12 15 6" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFullscreen(false)
+                  setIsImmersive3D(false)
+                }}
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-white/22 bg-slate-950/52 text-white shadow-[0_12px_30px_rgba(2,6,23,0.35)] backdrop-blur-md"
+                aria-label="Close fullscreen"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
               </button>
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="absolute left-0 right-0 top-0 flex items-center justify-between px-6 py-5">
+                <div>
+                  <div className="font-orbitron text-[11px] tracking-[0.28em] text-sky-100 drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)]">
+                    FULL-SCREEN SIMULATION
+                  </div>
+                  <div className={`mt-2 ${fontSize.xlarge} font-semibold text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.75)]`}>
+                    {selectedEvent?.asset_name || selectedEvent?.name || 'Satellite Risk Event'}
+                  </div>
+                  <div className={`mt-1 ${fontSize.medium} text-white/92 drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)]`}>
+                    {activeBranch.label} branch · {simulation.horizonLabel}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {immersivePanoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setIsImmersive3D((current) => !current)}
+                      className="rounded-xl border border-sky-100/45 bg-sky-200/18 px-4 py-2 font-mono text-[11px] tracking-[0.16em] text-sky-50 shadow-[0_10px_30px_rgba(2,6,23,0.25)] backdrop-blur-md"
+                    >
+                      ENTER 3D VIEW
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsFullscreen(false)
+                      setIsImmersive3D(false)
+                    }}
+                    className="rounded-xl border border-white/26 bg-slate-950/62 px-4 py-2 font-mono text-[11px] tracking-[0.16em] text-white shadow-[0_10px_30px_rgba(2,6,23,0.28)] backdrop-blur-md"
+                  >
+                    CLOSE
+                  </button>
+                </div>
+              </div>
 
-          <div className="absolute left-6 top-28 max-w-md rounded-2xl border border-white/10 bg-black/35 p-5 backdrop-blur-md">
-            <div className="font-orbitron text-[11px] tracking-[0.28em] text-white/55">
-              RECOMMENDED ACTION
-            </div>
-            <div className="mt-2 text-3xl font-semibold text-white">
-              {activeBranch.label}
-            </div>
-            <p className="mt-3 text-sm leading-6 text-white/78">
-              {worldResult?.caption || activeBranch.recommendation}
-            </p>
-          </div>
+              <div className="absolute left-6 top-28 max-w-xl rounded-[1.75rem] border border-white/18 bg-slate-950/84 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.52)] backdrop-blur-xl">
+                <div className="font-orbitron text-[11px] tracking-[0.28em] text-sky-100">
+                  RECOMMENDED ACTION
+                </div>
+                <div className="mt-2 text-4xl font-semibold leading-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.42)]">
+                  {activeBranch.label}
+                </div>
+                <p className="mt-4 max-w-lg text-base leading-8 text-white">
+                  {activeBranch.recommendation}
+                </p>
+                {shortCaption && (
+                  <p className="mt-4 max-w-lg text-sm leading-7 text-white/82">
+                    {shortCaption}
+                  </p>
+                )}
+              </div>
 
-          <div className="absolute bottom-6 left-6 right-6 grid gap-3 md:grid-cols-4">
-            <FullscreenMetric label="Miss Distance" value={`${activeBranch.metrics.missDistanceKm} km`} />
-            <FullscreenMetric label="Collision Risk" value={formatProbability(activeBranch.metrics.collisionProbability)} />
-            <FullscreenMetric label="Fuel Cost" value={`${activeBranch.metrics.fuelCostKg} kg`} />
-            <FullscreenMetric label="Mission Delay" value={`${activeBranch.metrics.scheduleDelayMin} min`} />
-          </div>
+              <div className="absolute bottom-6 left-6 right-6 grid gap-3 md:grid-cols-4">
+                <FullscreenMetric label="Miss Distance" value={`${activeBranch.metrics.missDistanceKm} km`} />
+                <FullscreenMetric label="Collision Risk" value={formatProbability(activeBranch.metrics.collisionProbability)} />
+                <FullscreenMetric label="Fuel Cost" value={`${activeBranch.metrics.fuelCostKg} kg`} />
+                <FullscreenMetric label="Mission Delay" value={`${activeBranch.metrics.scheduleDelayMin} min`} />
+              </div>
+            </>
+          )}
         </div>
       )}
     </>
@@ -653,8 +804,8 @@ function FullscreenMetric({
   value: string
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/35 p-4 backdrop-blur-md">
-      <div className="font-mono text-[11px] tracking-[0.18em] text-white/45">{label}</div>
+    <div className="rounded-2xl border border-white/12 bg-slate-950/42 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.25)] backdrop-blur-xl">
+      <div className="font-mono text-[11px] tracking-[0.18em] text-sky-100/45">{label}</div>
       <div className="mt-2 text-2xl font-semibold text-white">{value}</div>
     </div>
   )

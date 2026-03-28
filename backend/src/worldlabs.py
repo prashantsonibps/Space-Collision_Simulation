@@ -1,13 +1,19 @@
 import os
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import requests
+from dotenv import load_dotenv
 
 from .utils import get_logger
 
 logger = get_logger("worldlabs")
 
 WORLDLABS_API_BASE = "https://api.worldlabs.ai"
+
+_backend_dir = Path(__file__).resolve().parents[1]
+load_dotenv(_backend_dir / ".env")
+load_dotenv()
 
 
 def get_worldlabs_api_key() -> str:
@@ -33,9 +39,8 @@ def generate_world(
     seed: Optional[int] = None,
     tags: Optional[list[str]] = None,
 ) -> Dict[str, Any]:
-    payload: Dict[str, Any] = {
+    base_payload: Dict[str, Any] = {
         "display_name": display_name,
-        "model": "Marble 0.1-mini",
         "tags": tags or ["spaceguard", "satellite", "simulation"],
         "permission": {
             "public": False,
@@ -50,20 +55,46 @@ def generate_world(
     }
 
     if seed is not None:
-        payload["seed"] = seed
+        base_payload["seed"] = seed
 
-    response = requests.post(
-        f"{WORLDLABS_API_BASE}/marble/v1/worlds:generate",
-        headers=worldlabs_headers(),
-        json=payload,
-        timeout=60,
-    )
-    if response.status_code >= 400:
-        raise requests.HTTPError(
+    models_to_try = ["Marble 0.1-plus", "Marble 0.1-mini"]
+    last_error: Optional[requests.HTTPError] = None
+
+    for model_name in models_to_try:
+        payload = {**base_payload, "model": model_name}
+        response = requests.post(
+            f"{WORLDLABS_API_BASE}/marble/v1/worlds:generate",
+            headers=worldlabs_headers(),
+            json=payload,
+            timeout=60,
+        )
+        if response.status_code < 400:
+            data = response.json()
+            data["model_used"] = model_name
+            if model_name != models_to_try[0]:
+                logger.warning(f"World Labs fallback succeeded with {model_name}")
+            return data
+
+        error = requests.HTTPError(
             f"{response.status_code} Client Error: {response.text}",
             response=response,
         )
-    return response.json()
+        last_error = error
+
+        should_try_fallback = (
+            model_name == "Marble 0.1-plus"
+            and response.status_code == 402
+            and "insufficient credits" in response.text.lower()
+        )
+        if should_try_fallback:
+            logger.warning("World Labs Marble 0.1-plus unavailable due to credits; retrying with Marble 0.1-mini")
+            continue
+
+        raise error
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("World generation failed without a response.")
 
 
 def get_operation(operation_id: str) -> Dict[str, Any]:

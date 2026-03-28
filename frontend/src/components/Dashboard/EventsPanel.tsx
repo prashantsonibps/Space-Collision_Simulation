@@ -91,12 +91,6 @@ function EventRow({
   const rc = riskClasses[theme]
   const rowRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (isSelected && rowRef.current) {
-      rowRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    }
-  }, [isSelected])
-
   const probPct = event.collision_probability ? parseFloat((event.collision_probability * 100).toFixed(4)) : 0
 
   return (
@@ -215,7 +209,11 @@ function EventRow({
               <div className="flex gap-2 mt-2">
                 <button
                   type="button"
-                  onClick={() => onRunScenario(event.id)}
+                  onClick={(clickEvent) => {
+                    clickEvent.preventDefault()
+                    clickEvent.stopPropagation()
+                    onRunScenario(event.id)
+                  }}
                   className={`flex-1 py-1.5 rounded ${fontSize.small} font-mono border ${accent[theme].borderDim} ${accent[theme].bgDim} ${accent[theme].text} text-center tracking-[0.16em]`}
                 >
                   RUN SCENARIO
@@ -255,7 +253,6 @@ export function EventsPanel({
   const [fireballEvents, setFireballEvents] = useState<ConjunctionEvent[]>([])
   const [launchEvents, setLaunchEvents] = useState<ConjunctionEvent[]>([])
   const [loading, setLoading] = useState(true)
-
   // Clock timer
   useEffect(() => {
     setTime(new Date())

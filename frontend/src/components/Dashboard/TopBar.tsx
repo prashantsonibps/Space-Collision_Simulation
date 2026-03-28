@@ -78,7 +78,7 @@ export function TopBar({ variant = 'overlay' }: TopBarProps) {
             : 'text-slate-500 dark:text-white/40 hover:text-slate-700 dark:hover:text-white/60'
             }`}
         >
-          SCENARIOS
+          ARCHIVE
         </Link>
       </div>
 
@@ -101,7 +101,7 @@ export function TopBar({ variant = 'overlay' }: TopBarProps) {
         <div className="flex items-center gap-1.5">
           <span className={`w-1.5 h-1.5 rounded-full ${riskClasses[theme].CRITICAL.dot} animate-pulse`} />
           <span className={`${riskClasses[theme].CRITICAL.text} font-medium`}>LIVE</span>
-          <span className="text-slate-500 dark:text-white/40">SCENARIOS</span>
+          <span className="text-slate-500 dark:text-white/40">RISKS</span>
         </div>
       </div>
 

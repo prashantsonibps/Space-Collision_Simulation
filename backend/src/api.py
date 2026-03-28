@@ -105,6 +105,11 @@ class WorldSimulationStartResponse(BaseModel):
     prompt: str
     display_name: str
     cached: bool = False
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    expires_at: Optional[str] = None
+    progress_status: Optional[str] = None
+    progress_description: Optional[str] = None
     world_id: Optional[str] = None
     thumbnail_url: Optional[str] = None
     pano_url: Optional[str] = None
@@ -115,6 +120,11 @@ class WorldSimulationStartResponse(BaseModel):
 class WorldSimulationStatusResponse(BaseModel):
     done: bool
     operation_id: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    expires_at: Optional[str] = None
+    progress_status: Optional[str] = None
+    progress_description: Optional[str] = None
     world_id: Optional[str] = None
     thumbnail_url: Optional[str] = None
     pano_url: Optional[str] = None
@@ -199,6 +209,11 @@ def start_world_simulation(req: WorldSimulationRequest):
             "prompt": cached.get("prompt", ""),
             "display_name": cached.get("display_name", ""),
             "cached": True,
+            "created_at": cached.get("created_at"),
+            "updated_at": cached.get("updated_at"),
+            "expires_at": cached.get("expires_at"),
+            "progress_status": cached.get("progress_status"),
+            "progress_description": cached.get("progress_description"),
             "world_id": cached.get("world_id"),
             "thumbnail_url": cached.get("thumbnail_url"),
             "pano_url": cached.get("pano_url"),
@@ -218,6 +233,7 @@ def start_world_simulation(req: WorldSimulationRequest):
         raise HTTPException(status_code=500, detail=str(exc))
 
     operation_id = result.get("operation_id") or result.get("id")
+    progress = (result.get("metadata") or {}).get("progress") or {}
     if not operation_id:
         raise HTTPException(status_code=502, detail="World generation did not return an operation id.")
 
@@ -236,6 +252,11 @@ def start_world_simulation(req: WorldSimulationRequest):
         "prompt": prompt,
         "display_name": display_name,
         "cached": False,
+        "created_at": result.get("created_at"),
+        "updated_at": result.get("updated_at"),
+        "expires_at": result.get("expires_at"),
+        "progress_status": progress.get("status"),
+        "progress_description": progress.get("description"),
     }
 
 @app.get("/simulation/worlds/cache")
@@ -253,16 +274,22 @@ def get_world_simulation_status(operation_id: str):
         raise HTTPException(status_code=500, detail=str(exc))
 
     done = bool(operation.get("done"))
+    metadata = operation.get("metadata") or {}
+    progress = metadata.get("progress") or {}
     if not done:
         return {
             "done": False,
             "operation_id": operation_id,
-            "world_id": (operation.get("metadata") or {}).get("world_id"),
+            "created_at": operation.get("created_at"),
+            "updated_at": operation.get("updated_at"),
+            "expires_at": operation.get("expires_at"),
+            "progress_status": progress.get("status"),
+            "progress_description": progress.get("description"),
+            "world_id": metadata.get("world_id"),
             "raw_operation": operation,
         }
 
     response = operation.get("response") or {}
-    metadata = operation.get("metadata") or {}
     world_id = (
         response.get("world_id")
         or response.get("id")
@@ -290,6 +317,11 @@ def get_world_simulation_status(operation_id: str):
     payload = {
         "done": True,
         "operation_id": operation_id,
+        "created_at": operation.get("created_at"),
+        "updated_at": operation.get("updated_at"),
+        "expires_at": operation.get("expires_at"),
+        "progress_status": progress.get("status"),
+        "progress_description": progress.get("description"),
         "world_id": world_id,
         "thumbnail_url": thumbnail_url,
         "pano_url": imagery.get("pano_url"),
