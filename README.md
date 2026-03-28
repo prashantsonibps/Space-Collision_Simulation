@@ -1,131 +1,132 @@
-# SpaceGuard 🛡️🚀
+# SpaceGuard
 
-### **A Simulation Copilot for Orbital Risk**
+### Globe-First Satellite Collision Simulation
 
-> _"Roll out orbital futures before the mission has to commit."_
+SpaceGuard is a simulation-first mission console for orbital collision risk.
 
-## Try it out at https://spaceguard-a0dbc.web.app/ 
+The product flow is simple:
+- open the globe
+- select a critical conjunction
+- see the possible collision on the globe
+- run a scenario
+- compare future branches like `Observe Only`, `Avoidance Burn`, and `Mission Replan`
 
----
+This project is focused on simulation, not prediction markets.
 
-## 🌌 The Problem: The Kessler Syndrome is Unpriced
+## What It Does
 
-The space economy is booming ($600B+ today, $1T+ by 2030), but **orbital risk is unmanaged**.
+SpaceGuard helps an operator answer one question:
 
-- **25,000+** tracked objects and debris pieces are cluttering Low Earth Orbit (LEO).
-- **Satellite Collisions** are becoming statistically inevitable (e.g., Iridium-33 vs Cosmos-2251).
-- **Launch Delays** cost millions per day in lost revenue and operational burn.
-- **Space Weather** (Solar Flares) can fry electronics instantly.
+`What should we do before two objects get dangerously close in orbit?`
 
-Currently, insurance is slow, manual, and reactive. **SpaceGuard makes it real-time, algorithmic, and tradable.**
+The app combines:
+- a live globe for orbital risk exploration
+- branch-based collision response scenarios
+- World Labs generated future visuals for selected branches
+- Firebase-backed caching so generated sims can load instantly during a demo
 
----
+## Current Demo Flow
 
-## 🛰️ What is SpaceGuard?
+1. Start on the globe view.
+2. Select a critical satellite event from the risk monitor.
+3. Watch the selected conjunction highlight on the globe.
+4. Click `RUN SCENARIO`.
+5. Open the simulation console and compare branches.
+6. Generate or reload a future simulation view.
+7. Open the result full-screen or in Marble 3D.
 
-SpaceGuard is a **simulation-first mission operations console** that ingests live space data and compares possible futures before an operator acts.
+## Core Experience
 
-We don't just show you where satellites are; **we simulate what happens next and which intervention path is safest.**
+### 1. Globe View
+- 3D Earth with orbital markers
+- highlighted critical conjunction selection
+- globe-first landing experience
 
-### **Core Modules**
+### 2. Scenario Lab
+- `Observe Only`
+- `Avoidance Burn`
+- `Mission Replan`
+- branch tradeoffs for miss distance, collision risk, fuel, and delay
 
-1.  **🌍 Real-Time Orbital Conjunctions**: Uses SGP4 propagation (Skyfield) on live TLE data to detect satellites on collision courses (<10km miss distance).
-2.  **🚀 Launch Delay Modeling**: analyzing pad location, live OpenWeather data, and historical provider reliability to estimate T-0 scrub risk.
-3.  **☄️ Deep Space & Weather**: Monitoring NASA NeoWs (Asteroids) and DONKI (Space Weather) for external threats.
-4.  **🧠 AI Scenario Analyst**: An autonomous copilot that turns raw events into action branches like observe, avoid, or delay, then explains the tradeoffs.
+### 3. World Model Output
+- generated future visuals from World Labs
+- full-screen simulation presentation
+- Marble world handoff for richer 3D viewing
 
----
+## Tech Stack
 
-## 🧪 Why It Fits World Models
+- Frontend: Next.js 14, Tailwind CSS, Framer Motion
+- 3D UI: Three.js, React Three Fiber, Drei
+- Backend: FastAPI, Python
+- Data: Firebase Firestore
+- World Generation: World Labs API
 
-The strongest version of SpaceGuard is not a trading app. It is a **counterfactual simulator for operators**.
+## Local Setup
 
-1.  **State ingestion**: Pull current orbital, launch, and weather state from live feeds.
-2.  **Future rollout**: Compare “do nothing”, “maneuver”, and “replan” branches over the next hours.
-3.  **Decision support**: Recommend the branch with the best safety, continuity, and cost tradeoff.
-
----
-
-## 🛠️ Tech Stack
-
-- **Frontend**: Next.js 14, Tailwind CSS, Framer Motion.
-- **Visualization**: Three.js / React Three Fiber (R3F) for the 3D Digital Twin globe.
-- **Backend**: Python (FastAPI/Scripts) for orbital mechanics & data ingestion.
-- **AI Engine**: Structured scenario reasoning for intervention and rollout analysis.
-- **Data**: Firebase Firestore (Real-time sync), CelesTrak (TLEs), NASA NeoWs, OpenWeather, The SpaceDevs.
-
----
-
-## 🚀 Quick Start
-
-### 1. Clone & Install
-
-```bash
-git clone https://github.com/prashantsonibps/SpaceGuard.git
-cd SpaceGuard
-```
-
-### 2. Backend Setup (The Engine)
+### Backend
 
 ```bash
 cd backend
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-
-# Add your .env file with:
-# MISTRAL_API_KEY=...
-# NASA_API_KEY=...
-# OPENWEATHER_API_KEY=...
-# FIREBASE_CREDENTIALS_PATH=serviceAccountKey.json
-
-python src/main.py
 ```
 
-### 3. Frontend Setup (The Dashboard)
+Create `backend/.env` and add:
+
+```bash
+WORLDLABS_API_KEY=your_key_here
+GEMINI_API_KEY=your_key_here
+```
+
+Then run:
+
+```bash
+venv/bin/uvicorn src.api:app --host 127.0.0.1 --port 8003
+```
+
+### Frontend
 
 ```bash
 cd frontend
 npm install
-npm run dev
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8003 npm run dev -- --hostname 127.0.0.1 --port 3204
 ```
 
-Visit `http://localhost:3000` to explore the orbital simulation console.
+Open:
 
-### 4. Hosting the frontend (e.g. Vercel)
+- Frontend: `http://127.0.0.1:3204`
+- Backend: `http://127.0.0.1:8003`
 
-On branch `feat/host-frontend`, the UI uses the inline-expand Financial Terminal and betting flow. To deploy the frontend:
+## Notes
 
-1. Set the backend API URL in your host’s environment:
-   - **`NEXT_PUBLIC_API_URL`** = your backend base URL (e.g. `https://your-api.fly.dev`).
-2. Copy `frontend/.env.example` to `frontend/.env.local` and fill in `NEXT_PUBLIC_API_URL` for local builds, or configure the same variable in your hosting dashboard.
-3. Ensure the backend allows your frontend origin in CORS (the default API allows all origins).
+- The first World Labs generation can take a bit.
+- Completed simulations are cached so later loads are instant.
+- If a generated world has no thumbnail, the app falls back to the returned panorama.
 
-Without `NEXT_PUBLIC_API_URL`, the app falls back to `http://localhost:8000` (local dev).
+## Project Direction
 
----
+This repo is intentionally centered on one strong use case:
 
-## 🚀 Production Deployment (Google Cloud)
+`satellite collision simulation and intervention planning`
 
-**Live:** https://spaceguard-a0dbc.web.app | **API:** https://spaceguard-api-1040980823268.us-central1.run.app
+That means the app is optimized around:
+- conjunction visibility
+- counterfactual branch comparison
+- realistic simulation presentation
 
-**Redeploy:**
-```bash
-# Backend
-gcloud run deploy spaceguard-api --source ./backend --region us-central1 --project spaceguard-a0dbc --allow-unauthenticated
+Instead of:
+- trading flows
+- portfolio views
+- generic prediction interfaces
 
-# Frontend (set backend URL first)
-NEXT_PUBLIC_API_URL=https://spaceguard-api-1040980823268.us-central1.run.app npm run build --prefix frontend && firebase deploy --only hosting
-```
+## Demo Pitch
 
----
+SpaceGuard turns orbital risk from a static alert into a simulated decision.
 
-## 🔮 Future Roadmap
+Instead of only telling an operator that a conjunction is dangerous, it shows:
+- where the risk is on the globe
+- what the likely future looks like
+- which intervention path is safest
 
-- **World Model Rollouts**: Replace heuristic branches with generated future frames and branch scoring.
-- **Intervention Search**: Optimize maneuver timing, delay windows, and mission replans automatically.
-- **Debris Mapping**: High-fidelity visualization of the 2009 Cosmos collision debris cloud.
-
----
-
-_Built for the Future of Space._ 🚀
+Built for simulation-heavy decision support in space operations.
